@@ -1,0 +1,5 @@
+HighBackup.exe
+*.zip
+*.dump
+*.part
+src/app.ico
