@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace HighBackup
+namespace PgKeeper
 {
     public class MainForm : Form
     {
@@ -22,23 +22,25 @@ namespace HighBackup
         Button testBtn, nowBtn, restoreBtn;
         Label nextValue, nextSub, lastValue, lastSub, dot;
         NotifyIcon tray;
+        ComboBox picker;
+        Timer timer;
         TableLayoutPanel root, settingsColumn;
         Header header;
         bool running, allowShow, exiting, hintShown;
 
-        public MainForm(bool startHidden)
+        public MainForm(Settings settings, bool startHidden, Settings draft = null)
         {
             allowShow = !startHidden;
-            s = Settings.Load();
+            s = settings;
             if (s.PgDump == "" || !File.Exists(s.PgDump)) s.PgDump = Dump.Find();
             if (s.Enabled && s.NextRunTicks == 0) s.NextRunTicks = (DateTime.Now + s.Interval).Ticks;
 
             BuildUi();
-            Fill();
+            Fill(draft ?? s);
             LoadLog();
             UpdateStatus();
 
-            var timer = new Timer { Interval = 1000 };
+            timer = new Timer { Interval = 1000 };
             timer.Tick += (o, e) => Tick();
             timer.Start();
         }
@@ -48,40 +50,40 @@ namespace HighBackup
             SuspendLayout();
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            Text = "HighBackup — بکاپ خودکار PostgreSQL";
+            Text = L.Get("title");
             Font = new Font("Segoe UI", 9.75f);
             ForeColor = Theme.Text;
             BackColor = Theme.Back;
-            RightToLeft = RightToLeft.Yes;
-            RightToLeftLayout = true;
+            RightToLeft = L.Rtl ? RightToLeft.Yes : RightToLeft.No;
+            RightToLeftLayout = L.Rtl;
             ClientSize = new Size(1120, 660);
             StartPosition = FormStartPosition.CenterScreen;
             Icon = Program.AppIcon(32);
 
-            var conn = new Card("اتصال به دیتابیس");
+            var conn = new Card(L.Get("connection"));
             var connGrid = Grid();
-            host = Field(connGrid, "سرور", Input());
-            port = Field(connGrid, "پورت", Num(1, 65535));
-            user = Field(connGrid, "نام کاربری", Input());
-            pass = Field(connGrid, "رمز عبور", Input());
+            host = Field(connGrid, L.Get("host"), Input());
+            port = Field(connGrid, L.Get("port"), Num(1, 65535));
+            user = Field(connGrid, L.Get("user"), Input());
+            pass = Field(connGrid, L.Get("password"), Input());
             pass.UseSystemPasswordChar = true;
-            db = Field(connGrid, "دیتابیس", Input());
-            pgdump = Field(connGrid, "مسیر pg_dump", Input(), Theme.Button("انتخاب…", PickPgDump));
-            testBtn = Theme.Button("تست اتصال", TestConnection);
+            db = Field(connGrid, L.Get("database"), Input());
+            pgdump = Field(connGrid, L.Get("pgdumpPath"), Input(), Theme.Button(L.Get("browse"), PickPgDump));
+            testBtn = Theme.Button(L.Get("test"), TestConnection);
             Field(connGrid, "", testBtn);
             conn.Add(connGrid);
 
-            var sched = new Card("زمان‌بندی");
+            var sched = new Card(L.Get("schedule"));
             var schedGrid = Grid();
-            enabled = Field(schedGrid, "", new CheckBox { Text = "بکاپ خودکار فعال باشد", AutoSize = true });
+            enabled = Field(schedGrid, "", new CheckBox { Text = L.Get("enabled"), AutoSize = true });
             hours = Num(0, 999);
             minutes = Num(0, 59);
-            Field(schedGrid, "هر", Row(hours, Caption("ساعت و"), minutes, Caption("دقیقه یک‌بار")));
-            folder = Field(schedGrid, "پوشه‌ی بکاپ", Input(), Theme.Button("انتخاب…", PickFolder));
+            Field(schedGrid, L.Get("every"), Row(hours, Caption(L.Get("hoursAnd")), minutes, Caption(L.Get("minutesOnce"))));
+            folder = Field(schedGrid, L.Get("folder"), Input(), Theme.Button(L.Get("browse"), PickFolder));
             keep = Num(0, 9999);
-            Field(schedGrid, "نگه‌داشتن", Row(keep, Caption("بکاپ آخر (صفر یعنی همه بمانند)")));
-            autostart = Field(schedGrid, "", new CheckBox { Text = "با روشن شدن ویندوز اجرا شود", AutoSize = true });
-            Field(schedGrid, "", Theme.Button("ذخیره‌ی تنظیمات", SaveClicked, true));
+            Field(schedGrid, L.Get("keep"), Row(keep, Caption(L.Get("keepHint"))));
+            autostart = Field(schedGrid, "", new CheckBox { Text = L.Get("autostart"), AutoSize = true });
+            Field(schedGrid, "", Theme.Button(L.Get("save"), SaveClicked, true));
             sched.Add(schedGrid);
 
             var status = new Card(null);
@@ -89,8 +91,8 @@ namespace HighBackup
             statusGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             statusGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             dot = new Label { Text = "●", AutoSize = true, Margin = new Padding(0, 0, 0, 0) };
-            statusGrid.Controls.Add(Row(dot, Caption("بکاپ بعدی", Theme.Muted)), 0, 0);
-            statusGrid.Controls.Add(Caption("آخرین بکاپ", Theme.Muted), 1, 0);
+            statusGrid.Controls.Add(Row(dot, Caption(L.Get("next"), Theme.Muted)), 0, 0);
+            statusGrid.Controls.Add(Caption(L.Get("last"), Theme.Muted), 1, 0);
             nextValue = BigValue();
             lastValue = BigValue();
             statusGrid.Controls.Add(nextValue, 0, 1);
@@ -101,12 +103,12 @@ namespace HighBackup
             statusGrid.Controls.Add(lastSub, 1, 2);
             status.Add(statusGrid);
 
-            nowBtn = Theme.Button("الان بکاپ بگیر", BackupNow, true);
-            restoreBtn = Theme.Button("بازگردانی بکاپ…", RestoreClicked);
-            var actions = Row(nowBtn, restoreBtn, Theme.Button("باز کردن پوشه", OpenFolder));
+            nowBtn = Theme.Button(L.Get("backupNow"), BackupNow, true);
+            restoreBtn = Theme.Button(L.Get("restore"), RestoreClicked);
+            var actions = Row(nowBtn, restoreBtn, Theme.Button(L.Get("openFolder"), OpenFolder));
             actions.Margin = new Padding(2, 0, 2, 2);
 
-            var logCard = new Card("گزارش", true);
+            var logCard = new Card(L.Get("log"), true);
             log = new RichTextBox { ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = Theme.Surface, ScrollBars = RichTextBoxScrollBars.Vertical, DetectUrls = false };
             logCard.Add(log, true);
 
@@ -121,18 +123,44 @@ namespace HighBackup
             root.Controls.Add(settingsColumn, 0, 0);
             root.Controls.Add(left, 1, 0);
             Controls.Add(root);
-            header = new Header();
+            picker = LanguagePicker();
+            header = new Header(picker);
             Controls.Add(header);
 
-            var menu = new ContextMenuStrip { RightToLeft = RightToLeft.Yes };
-            menu.Items.Add("باز کردن", null, (o, e) => ShowMain());
-            menu.Items.Add("الان بکاپ بگیر", null, (o, e) => RunBackup());
-            menu.Items.Add("خروج", null, (o, e) => ExitApp());
-            tray = new NotifyIcon { Icon = Program.AppIcon(SystemInformation.SmallIconSize.Width), ContextMenuStrip = menu, Visible = true, Text = "HighBackup" };
+            var menu = new ContextMenuStrip { RightToLeft = RightToLeft };
+            menu.Items.Add(L.Get("open"), null, (o, e) => ShowMain());
+            menu.Items.Add(L.Get("backupNow"), null, (o, e) => RunBackup());
+            menu.Items.Add(L.Get("exit"), null, (o, e) => ExitApp());
+            tray = new NotifyIcon { Icon = Program.AppIcon(SystemInformation.SmallIconSize.Width), ContextMenuStrip = menu, Visible = true, Text = "PgKeeper" };
             tray.DoubleClick += (o, e) => ShowMain();
 
             ResumeLayout(false);
             PerformLayout();
+        }
+
+        ComboBox LanguagePicker()
+        {
+            var box = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110, Margin = new Padding(0, 8, 0, 0) };
+            box.Items.AddRange(L.Names);
+            box.SelectedIndex = Array.IndexOf(L.Codes, L.Code);
+            box.SelectedIndexChanged += (o, e) => ChangeLanguage(L.Codes[box.SelectedIndex]);
+            return box;
+        }
+
+        void ChangeLanguage(string code)
+        {
+            if (code == L.Code) return;
+            var draft = Read();
+            L.Code = code;
+            s.Language = draft.Language = code;
+            s.Save();
+            BeginInvoke((Action)(() =>
+            {
+                var next = new MainForm(s, false, draft) { StartPosition = FormStartPosition.Manual, Location = Location };
+                Program.Context.MainForm = next;
+                next.Show();
+                ExitApp();
+            }));
         }
 
         static TableLayoutPanel Column(params Control[] items)
@@ -163,6 +191,7 @@ namespace HighBackup
             control.Anchor = control is TextBox ? AnchorStyles.Left | AnchorStyles.Right : AnchorStyles.Left;
             t.Controls.Add(control, 1, row);
             if (extra != null) t.Controls.Add(extra, 2, row);
+            else if (!(control is TextBox)) t.SetColumnSpan(control, 2);
             return control;
         }
 
@@ -193,21 +222,28 @@ namespace HighBackup
             return new Label { AutoSize = true, Font = new Font("Segoe UI", 14f, FontStyle.Bold), Margin = new Padding(2, 4, 2, 2) };
         }
 
-        void Fill()
+        void Fill(Settings src)
         {
-            host.Text = s.Host;
-            port.Value = Math.Max(1, Math.Min(65535, s.Port));
-            user.Text = s.User;
-            pass.Text = Settings.Unprotect(s.Password);
-            db.Text = s.Database;
-            pgdump.Text = s.PgDump;
-            enabled.Checked = s.Enabled;
-            hours.Value = Math.Min(999, Math.Max(0, s.Hours));
-            minutes.Value = Math.Min(59, Math.Max(0, s.Minutes));
-            folder.Text = s.Folder;
-            keep.Value = Math.Min(9999, Math.Max(0, s.Keep));
-            using (var key = Registry.CurrentUser.OpenSubKey(RunKey))
-                autostart.Checked = key != null && key.GetValue("HighBackup") != null;
+            host.Text = src.Host;
+            port.Value = Math.Max(1, Math.Min(65535, src.Port));
+            user.Text = src.User;
+            pass.Text = Settings.Unprotect(src.Password);
+            db.Text = src.Database;
+            pgdump.Text = src.PgDump;
+            enabled.Checked = src.Enabled;
+            hours.Value = Math.Min(999, Math.Max(0, src.Hours));
+            minutes.Value = Math.Min(59, Math.Max(0, src.Minutes));
+            folder.Text = src.Folder;
+            keep.Value = Math.Min(9999, Math.Max(0, src.Keep));
+            using (var key = Registry.CurrentUser.OpenSubKey(RunKey, true))
+            {
+                if (key != null && key.GetValue("HighBackup") != null)
+                {
+                    key.DeleteValue("HighBackup");
+                    key.SetValue("PgKeeper", "\"" + Application.ExecutablePath + "\" /tray");
+                }
+                autostart.Checked = key != null && key.GetValue("PgKeeper") != null;
+            }
         }
 
         Settings Read()
@@ -229,15 +265,16 @@ namespace HighBackup
                 LastRunTicks = s.LastRunTicks,
                 LastRunOk = s.LastRunOk,
                 LastRunSize = s.LastRunSize,
+                Language = s.Language,
             };
         }
 
         static string Validate(Settings t, bool needFolder)
         {
-            if (!File.Exists(t.PgDump)) return "فایل pg_dump پیدا نشد. مسیرش را انتخاب کنید.";
-            if (t.Database == "") return "اسم دیتابیس را وارد کنید.";
-            if (needFolder && t.Folder == "") return "پوشه‌ی بکاپ را انتخاب کنید.";
-            if (t.Enabled && t.Interval <= TimeSpan.Zero) return "فاصله‌ی بکاپ‌ها باید حداقل ۱ دقیقه باشد.";
+            if (!File.Exists(t.PgDump)) return L.Get("noPgDump");
+            if (t.Database == "") return L.Get("noDatabase");
+            if (needFolder && t.Folder == "") return L.Get("noFolder");
+            if (t.Enabled && t.Interval <= TimeSpan.Zero) return L.Get("badInterval");
             return null;
         }
 
@@ -249,8 +286,8 @@ namespace HighBackup
             s.Save();
             using (var key = Registry.CurrentUser.CreateSubKey(RunKey))
             {
-                if (autostart.Checked) key.SetValue("HighBackup", "\"" + Application.ExecutablePath + "\" /tray");
-                else key.DeleteValue("HighBackup", false);
+                if (autostart.Checked) key.SetValue("PgKeeper", "\"" + Application.ExecutablePath + "\" /tray");
+                else key.DeleteValue("PgKeeper", false);
             }
             UpdateStatus();
         }
@@ -270,7 +307,7 @@ namespace HighBackup
 
         void SaveClicked()
         {
-            if (SaveFromForm(false)) Log("تنظیمات ذخیره شد.");
+            if (SaveFromForm(false)) Log(L.Get("saved"));
         }
 
         void BackupNow()
@@ -297,12 +334,12 @@ namespace HighBackup
             var error = Validate(s, true);
             if (error != null)
             {
-                Log("بکاپ ناموفق بود: " + error);
+                Log(L.Get("backupFailed", error), 2);
                 Notify(error, ToolTipIcon.Error);
                 return;
             }
             SetBusy(true);
-            Log("در حال گرفتن بکاپ از " + s.Database + " …");
+            Log(L.Get("backingUp", s.Database));
             var cfg = s;
             var password = Settings.Unprotect(s.Password);
             Task.Run(() => Dump.Backup(cfg, password)).ContinueWith(t => BeginInvoke((Action)(() =>
@@ -314,13 +351,13 @@ namespace HighBackup
                 {
                     var message = t.Exception.GetBaseException().Message;
                     s.LastRunSize = "";
-                    Log("بکاپ ناموفق بود: " + message);
-                    Notify("بکاپ ناموفق بود: " + message, ToolTipIcon.Error);
+                    Log(L.Get("backupFailed", message), 2);
+                    Notify(L.Get("backupFailed", message), ToolTipIcon.Error);
                 }
                 else
                 {
                     s.LastRunSize = FormatSize(new FileInfo(t.Result).Length);
-                    Log("بکاپ موفق: " + Path.GetFileName(t.Result) + " (" + s.LastRunSize + ")");
+                    Log(L.Get("backupOk", Path.GetFileName(t.Result), s.LastRunSize), 1);
                 }
                 s.Save();
                 UpdateStatus();
@@ -330,7 +367,7 @@ namespace HighBackup
         void SetBusy(bool busy)
         {
             running = busy;
-            nowBtn.Enabled = restoreBtn.Enabled = !busy;
+            nowBtn.Enabled = restoreBtn.Enabled = picker.Enabled = !busy;
             UpdateStatus();
         }
 
@@ -348,8 +385,8 @@ namespace HighBackup
             Task.Run(() => Dump.Test(t, password)).ContinueWith(r => BeginInvoke((Action)(() =>
             {
                 testBtn.Enabled = true;
-                if (r.IsFaulted) Alert("اتصال برقرار نشد:\n" + r.Exception.GetBaseException().Message, MessageBoxIcon.Error);
-                else Alert("اتصال برقرار است.\n" + r.Result, MessageBoxIcon.Information);
+                if (r.IsFaulted) Alert(L.Get("connFailed", r.Exception.GetBaseException().Message), MessageBoxIcon.Error);
+                else Alert(L.Get("connOk", r.Result), MessageBoxIcon.Information);
             })));
         }
 
@@ -364,14 +401,11 @@ namespace HighBackup
             }
             string file, target;
             if (!AskRestore(t, out file, out target)) return;
-            var confirm = "محتوای دیتابیس «" + target + "» با این بکاپ جایگزین می‌شود.\n" +
-                "اگر این دیتابیس از قبل وجود داشته باشد، اول یک بکاپ ایمنی از وضعیت فعلی‌اش گرفته می‌شود.\n" +
-                "بهتر است سرور بازی خاموش باشد.\n\nادامه می‌دهید؟";
-            if (MessageBox.Show(this, confirm, "HighBackup", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2,
-                MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign) != DialogResult.Yes) return;
+            if (MessageBox.Show(this, L.Get("restoreConfirm", target), "PgKeeper", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2, Program.BoxOptions()) != DialogResult.Yes) return;
             if (running)
             {
-                Alert("یک بکاپ در حال انجام است. چند لحظه بعد دوباره امتحان کنید.", MessageBoxIcon.Information);
+                Alert(L.Get("busy"), MessageBoxIcon.Information);
                 return;
             }
             SetBusy(true);
@@ -383,13 +417,13 @@ namespace HighBackup
                 if (r.IsFaulted)
                 {
                     var message = r.Exception.GetBaseException().Message;
-                    Log("بازگردانی ناموفق بود: " + message);
-                    Alert("بازگردانی ناموفق بود و هیچ جدولی تغییر نکرد.\n\n" + message, MessageBoxIcon.Error);
+                    Log(L.Get("restoreFailed", message), 2);
+                    Alert(L.Get("restoreFailedAlert", message), MessageBoxIcon.Error);
                 }
                 else
                 {
-                    Log("بازگردانی موفق: " + Path.GetFileName(file) + " ← " + target);
-                    Alert("بازگردانی با موفقیت انجام شد.", MessageBoxIcon.Information);
+                    Log(L.Get("restoreOk", Path.GetFileName(file), target), 1);
+                    Alert(L.Get("restoreOkAlert"), MessageBoxIcon.Information);
                 }
             })));
         }
@@ -399,12 +433,12 @@ namespace HighBackup
             file = target = null;
             using (var dialog = new Form
             {
-                Text = "بازگردانی بکاپ",
+                Text = L.Get("restoreTitle"),
                 Font = Font,
                 ForeColor = Theme.Text,
                 BackColor = Theme.Surface,
-                RightToLeft = RightToLeft.Yes,
-                RightToLeftLayout = true,
+                RightToLeft = RightToLeft,
+                RightToLeftLayout = L.Rtl,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false,
                 MinimizeBox = false,
@@ -418,18 +452,18 @@ namespace HighBackup
                 var grid = Grid();
                 var fileBox = Input();
                 fileBox.Width = 380;
-                Field(grid, "فایل بکاپ", fileBox, Theme.Button("انتخاب…", () =>
+                Field(grid, L.Get("backupFile"), fileBox, Theme.Button(L.Get("browse"), () =>
                 {
-                    using (var pick = new OpenFileDialog { Filter = "بکاپ PostgreSQL (*.dump)|*.dump|همه‌ی فایل‌ها|*.*", InitialDirectory = Directory.Exists(t.Folder) ? t.Folder : "" })
+                    using (var pick = new OpenFileDialog { Filter = L.Get("dumpFilter"), InitialDirectory = Directory.Exists(t.Folder) ? t.Folder : "" })
                         if (pick.ShowDialog(dialog) == DialogResult.OK) fileBox.Text = pick.FileName;
                 }));
-                var dbBox = Field(grid, "دیتابیس مقصد", Input());
+                var dbBox = Field(grid, L.Get("targetDb"), Input());
                 dbBox.Text = t.Database;
-                Field(grid, "", Caption("اگر این دیتابیس وجود نداشته باشد، ساخته می‌شود.", Theme.Muted));
+                Field(grid, "", Caption(L.Get("createdHint"), Theme.Muted));
 
-                var ok = Theme.Button("بازگردانی", () => { }, true);
+                var ok = Theme.Button(L.Get("restoreButton"), () => { }, true);
                 ok.DialogResult = DialogResult.OK;
-                var cancel = Theme.Button("انصراف", () => { });
+                var cancel = Theme.Button(L.Get("cancel"), () => { });
                 cancel.DialogResult = DialogResult.Cancel;
                 dialog.AcceptButton = ok;
                 dialog.CancelButton = cancel;
@@ -447,12 +481,12 @@ namespace HighBackup
             }
             if (!File.Exists(file))
             {
-                Alert("فایل بکاپ پیدا نشد.", MessageBoxIcon.Warning);
+                Alert(L.Get("fileMissing"), MessageBoxIcon.Warning);
                 return false;
             }
             if (target == "")
             {
-                Alert("اسم دیتابیس مقصد را وارد کنید.", MessageBoxIcon.Warning);
+                Alert(L.Get("targetMissing"), MessageBoxIcon.Warning);
                 return false;
             }
             return true;
@@ -474,7 +508,7 @@ namespace HighBackup
         {
             var path = folder.Text.Trim();
             if (Directory.Exists(path)) Process.Start("explorer.exe", "\"" + path + "\"");
-            else Alert("این پوشه هنوز وجود ندارد.", MessageBoxIcon.Warning);
+            else Alert(L.Get("folderMissing"), MessageBoxIcon.Warning);
         }
 
         void UpdateStatus()
@@ -483,44 +517,44 @@ namespace HighBackup
             dot.ForeColor = running ? Theme.Primary : on ? Theme.Green : Theme.Muted;
             if (running)
             {
-                nextValue.Text = "در حال انجام…";
+                nextValue.Text = L.Get("running");
                 nextValue.ForeColor = Theme.Primary;
             }
             else
             {
-                nextValue.Text = on ? Countdown(new DateTime(s.NextRunTicks) - DateTime.Now) : "خاموش";
+                nextValue.Text = on ? Countdown(new DateTime(s.NextRunTicks) - DateTime.Now) : L.Get("off");
                 nextValue.ForeColor = on ? Theme.Text : Theme.Muted;
             }
-            nextSub.Text = on ? FormatDate(new DateTime(s.NextRunTicks)) : "بکاپ خودکار فعال نیست";
+            nextSub.Text = on ? FormatDate(new DateTime(s.NextRunTicks)) : L.Get("offSub");
 
             if (s.LastRunTicks == 0)
             {
                 lastValue.Text = "—";
                 lastValue.ForeColor = Theme.Muted;
-                lastSub.Text = "هنوز بکاپی گرفته نشده";
+                lastSub.Text = L.Get("noneYet");
             }
             else
             {
-                lastValue.Text = s.LastRunOk ? "موفق ✓" : "ناموفق ✗";
+                lastValue.Text = L.Get(s.LastRunOk ? "ok" : "failed");
                 lastValue.ForeColor = s.LastRunOk ? Theme.Green : Theme.Red;
                 lastSub.Text = FormatDate(new DateTime(s.LastRunTicks)) + (s.LastRunSize != "" ? " · ‎" + s.LastRunSize : "");
             }
-            var tip = "HighBackup — " + (on ? "بکاپ بعدی: " + nextSub.Text : "بکاپ خودکار خاموش است");
+            var tip = "PgKeeper — " + (on ? L.Get("tipNext", nextSub.Text) : L.Get("tipOff"));
             if (tray.Text != tip) tray.Text = tip;
         }
 
         static string Countdown(TimeSpan left)
         {
-            if (left.TotalMinutes < 1) return "کمتر از یک دقیقه";
+            if (left.TotalMinutes < 1) return L.Get("lessMinute");
             var h = (int)left.TotalHours;
             var m = left.Minutes;
-            if (h == 0) return m + " دقیقه دیگر";
-            return m == 0 ? h + " ساعت دیگر" : h + " ساعت و " + m + " دقیقه دیگر";
+            if (h == 0) return L.Get("inMinutes", m);
+            return m == 0 ? L.Get("inHours", h) : L.Get("inHoursMinutes", h, m);
         }
 
-        void Log(string message)
+        void Log(string message, int kind = 0)
         {
-            var line = "[" + FormatDate(DateTime.Now) + "] " + message;
+            var line = "[" + FormatDate(DateTime.Now) + "] " + (kind == 1 ? "✓ " : kind == 2 ? "✗ " : "") + message;
             Append(line);
             try { File.AppendAllText(Settings.LogPath, line + Environment.NewLine); }
             catch (IOException) { }
@@ -530,8 +564,8 @@ namespace HighBackup
         {
             log.SelectionStart = log.TextLength;
             log.SelectionLength = 0;
-            log.SelectionColor = line.Contains("ناموفق") ? Theme.Red : line.Contains("موفق") ? Theme.Green : Color.FromArgb(51, 65, 85);
-            log.SelectedText = line + "\n";
+            log.SelectionColor = line.Contains("✗") ? Theme.Red : line.Contains("✓") ? Theme.Green : Color.FromArgb(51, 65, 85);
+            log.SelectedText = (L.Rtl ? line.Replace("✓ ", "").Replace("✗ ", "") : line) + "\n";
             log.ScrollToCaret();
         }
 
@@ -549,17 +583,17 @@ namespace HighBackup
 
         void Notify(string message, ToolTipIcon icon)
         {
-            tray.ShowBalloonTip(5000, "HighBackup", message, icon);
+            tray.ShowBalloonTip(5000, "PgKeeper", message, icon);
         }
 
         void Alert(string message, MessageBoxIcon icon)
         {
-            MessageBox.Show(this, message, "HighBackup", MessageBoxButtons.OK, icon, MessageBoxDefaultButton.Button1,
-                MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
+            MessageBox.Show(this, message, "PgKeeper", MessageBoxButtons.OK, icon, MessageBoxDefaultButton.Button1, Program.BoxOptions());
         }
 
         static string FormatDate(DateTime d)
         {
+            if (!L.Rtl) return d.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
             var pc = new PersianCalendar();
             return string.Format("{0:0000}/{1:00}/{2:00} {3:00}:{4:00}", pc.GetYear(d), pc.GetMonth(d), pc.GetDayOfMonth(d), d.Hour, d.Minute);
         }
@@ -580,8 +614,7 @@ namespace HighBackup
         void ExitApp()
         {
             exiting = true;
-            tray.Visible = false;
-            Application.Exit();
+            Close();
         }
 
         protected override void OnLoad(EventArgs e)
@@ -590,7 +623,7 @@ namespace HighBackup
             var need = settingsColumn.GetPreferredSize(new Size(settingsColumn.Width, 0)).Height + root.Padding.Vertical;
             ClientSize = new Size(ClientSize.Width, header.Height + need);
             MinimumSize = Size;
-            CenterToScreen();
+            if (StartPosition != FormStartPosition.Manual) CenterToScreen();
             ActiveControl = nowBtn;
         }
 
@@ -613,11 +646,12 @@ namespace HighBackup
                 if (!hintShown)
                 {
                     hintShown = true;
-                    Notify("برنامه کنار ساعت ویندوز باز می‌ماند و بکاپ‌ها ادامه دارند.", ToolTipIcon.Info);
+                    Notify(L.Get("trayHint"), ToolTipIcon.Info);
                 }
                 return;
             }
-            tray.Visible = false;
+            timer.Dispose();
+            tray.Dispose();
             base.OnFormClosing(e);
         }
     }

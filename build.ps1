@@ -77,9 +77,9 @@ if (-not (Test-Path $ico)) {
 
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 & $csc /nologo /target:winexe /optimize+ /codepage:65001 `
-    /out:"$(Join-Path $PSScriptRoot 'HighBackup.exe')" `
-    /win32icon:"$ico" /win32manifest:"$(Join-Path $src 'app.manifest')" /resource:"$ico,HighBackup.app.ico" `
+    /out:"$(Join-Path $PSScriptRoot 'PgKeeper.exe')" `
+    /win32icon:"$ico" /win32manifest:"$(Join-Path $src 'app.manifest')" /resource:"$ico,PgKeeper.app.ico" `
     /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Security.dll /r:System.Xml.dll `
     "$src\*.cs"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-Write-Host 'Built HighBackup.exe'
+Write-Host 'Built PgKeeper.exe'

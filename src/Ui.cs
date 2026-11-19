@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace HighBackup
+namespace PgKeeper
 {
     static class Theme
     {
@@ -94,7 +94,7 @@ namespace HighBackup
 
     class Header : Panel
     {
-        public Header()
+        public Header(Control picker)
         {
             DoubleBuffered = true;
             ResizeRedraw = true;
@@ -102,14 +102,18 @@ namespace HighBackup
             Height = 78;
             Padding = new Padding(18, 12, 18, 12);
 
-            var grid = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, BackColor = Color.Transparent };
+            var grid = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, BackColor = Color.Transparent };
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             var icon = new PictureBox { Image = Program.AppIcon(48).ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(48, 48), BackColor = Color.Transparent, Margin = new Padding(0, 0, 12, 0) };
             grid.Controls.Add(icon, 0, 0);
             grid.SetRowSpan(icon, 2);
-            grid.Controls.Add(new Label { Text = "HighBackup", AutoSize = true, ForeColor = Color.White, BackColor = Color.Transparent, Font = new Font("Segoe UI", 15f, FontStyle.Bold), Margin = new Padding(0) }, 1, 0);
-            grid.Controls.Add(new Label { Text = "بکاپ خودکار و بازگردانی دیتابیس PostgreSQL", AutoSize = true, ForeColor = Color.FromArgb(219, 234, 254), BackColor = Color.Transparent, Margin = new Padding(2, 0, 0, 0) }, 1, 1);
+            grid.Controls.Add(new Label { Text = "PgKeeper", AutoSize = true, ForeColor = Color.White, BackColor = Color.Transparent, Font = new Font("Segoe UI", 15f, FontStyle.Bold), Margin = new Padding(0) }, 1, 0);
+            grid.Controls.Add(new Label { Text = L.Get("subtitle"), AutoSize = true, ForeColor = Color.FromArgb(219, 234, 254), BackColor = Color.Transparent, Margin = new Padding(2, 0, 0, 0) }, 1, 1);
+            picker.Anchor = AnchorStyles.Right;
+            grid.Controls.Add(picker, 2, 0);
+            grid.SetRowSpan(picker, 2);
             Controls.Add(grid);
         }
 

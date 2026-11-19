@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Serialization;
 
-namespace HighBackup
+namespace PgKeeper
 {
     public class Settings
     {
@@ -23,6 +23,7 @@ namespace HighBackup
         public long LastRunTicks = 0;
         public bool LastRunOk = false;
         public string LastRunSize = "";
+        public string Language = "";
 
         public TimeSpan Interval { get { return new TimeSpan(Hours, Minutes, 0); } }
 
@@ -33,12 +34,18 @@ namespace HighBackup
             return copy;
         }
 
-        static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HighBackup");
+        static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PgKeeper");
         static readonly string FilePath = Path.Combine(Dir, "settings.xml");
         public static readonly string LogPath = Path.Combine(Dir, "log.txt");
 
         public static Settings Load()
         {
+            var legacy = Path.Combine(Path.GetDirectoryName(Dir), "HighBackup");
+            if (!Directory.Exists(Dir) && Directory.Exists(legacy))
+            {
+                try { Directory.Move(legacy, Dir); }
+                catch (IOException) { }
+            }
             try
             {
                 using (var stream = File.OpenRead(FilePath))

@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace HighBackup
+namespace PgKeeper
 {
     static class Dump
     {
@@ -58,7 +58,7 @@ namespace HighBackup
             var output = Run(s, password, "pg_dump", "-s -N \"*\" -d " + Quote(s.Database));
             var server = Regex.Match(output, @"Dumped from database version (\S+)").Groups[1].Value;
             var client = Regex.Match(output, @"Dumped by pg_dump version (\S+)").Groups[1].Value;
-            return "نسخه‌ی دیتابیس: " + server + "\nنسخه‌ی pg_dump: " + client;
+            return L.Get("versions", server, client);
         }
 
         public static void Restore(Settings s, string password, string file, string target, Action<string> progress)
@@ -66,22 +66,22 @@ namespace HighBackup
             var exists = Run(s, password, "psql", "-X -tA -d postgres -c " + Quote("select 1 from pg_database where datname = '" + target.Replace("'", "''") + "'")).Trim() == "1";
             if (exists)
             {
-                progress("گرفتن بکاپ ایمنی از وضعیت فعلی " + target + " …");
-                progress("بکاپ ایمنی گرفته شد: " + Path.GetFileName(Backup(s.With(target), password)));
+                progress(L.Get("safetyBackup", target));
+                progress(L.Get("safetyDone", Path.GetFileName(Backup(s.With(target), password))));
             }
             else
             {
                 Run(s, password, "psql", "-X -d postgres -c " + Quote("CREATE DATABASE \"" + target.Replace("\"", "\"\"") + "\""));
-                progress("دیتابیس " + target + " ساخته شد.");
+                progress(L.Get("dbCreated", target));
             }
-            progress("در حال بازگردانی " + Path.GetFileName(file) + " در " + target + " …");
+            progress(L.Get("restoring", Path.GetFileName(file), target));
             Run(s, password, "pg_restore", "--no-owner --no-privileges --single-transaction " + (exists ? "--clean --if-exists " : "") + "-d " + Quote(target) + " " + Quote(file), "-c lock_timeout=30000");
         }
 
         static string Run(Settings s, string password, string tool, string args, string options = null)
         {
             var exe = Path.Combine(Path.GetDirectoryName(s.PgDump), tool + ".exe");
-            if (!File.Exists(exe)) throw new Exception(tool + ".exe کنار pg_dump پیدا نشد.");
+            if (!File.Exists(exe)) throw new Exception(L.Get("toolMissing", tool));
             var psi = new ProcessStartInfo(exe, string.Format("-h {0} -p {1} -U {2} -w {3}", Quote(s.Host), s.Port, Quote(s.User), args))
             {
                 UseShellExecute = false,
